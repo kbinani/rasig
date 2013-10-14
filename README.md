@@ -5,7 +5,7 @@ is an AsakusaSatellite IRC gateway
 # Requirement
 
 * Ruby
-* Gems: irc-net
+* Gems: net-irc
 
 # Usage
 
