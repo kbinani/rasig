@@ -1,0 +1,237 @@
+#!/usr/bin/env ruby
+# coding: utf-8
+
+require 'net/irc'
+require 'net/http'
+require 'json'
+require 'date'
+
+class AsIrcGateway < Net::IRC::Server::Session
+  class AsClient
+    def initialize(api_entry, api_key)
+      @api_entry = api_entry
+      @api_key = api_key
+      @uri = URI(@api_entry)
+    end
+
+    def message_list(room_id, since_id)
+      begin
+        query = "room_id=#{room_id}&api_key=#{@api_key}" + (since_id.nil? ? "" : "&since_id=#{since_id}")
+        response = Net::HTTP.start(@uri.host, @uri.port) { |http|
+          http.get(@uri.path + "/message/list.json?" + query)
+        }
+        return JSON.parse(response.body)
+      rescue
+        return []
+      end
+    end
+
+    def post_message(room_id, message)
+      response = Net::HTTP.start(@uri.host, @uri.port) { |http|
+        http.post(@uri.path + "/message.json",
+                  "room_id=#{room_id}&message=#{message}&api_key=#{@api_key}")
+      }
+      result = JSON.parse(response.body)
+      result["message_id"]
+    end
+
+    def get_screen_name(name)
+      response = Net::HTTP.start(@uri.host, @uri.port) { |http|
+        http.get(@uri.path + "/user.json?api_key=#{@api_key}")
+      }
+      result = JSON.parse(response.body)
+      result["screen_name"]
+    end
+
+    def get_room_id_by_name(channel)
+      response = Net::HTTP.start(@uri.host, @uri.port) { |http|
+        http.get(@uri.path + "/room/list.json?api_key=#{@api_key}")
+      }
+      JSON.parse(response.body).select { |room|
+        room["name"] == channel
+      }.each { |room|
+        return room["id"]
+      }
+      nil
+    end
+
+    def channel_exists?(channel)
+      not get_room_id_by_name(channel).nil?
+    end
+  end
+
+  class AsRoomConnection
+    def initialize(as_client, name, gateway, polling_interval)
+      @client = as_client
+      @name = name
+      @room_id = @client.get_room_id_by_name(@name)
+      @gateway = gateway
+      @user_list = []
+
+      @thread = Thread.new {
+        since_id = nil
+        start_time = Time.now
+        while true do
+          begin
+            message_list = @client.message_list(@room_id, since_id)
+            message_list.select { |message|
+              (not message["body"].nil?) and (message["id"] != since_id)
+            }.each.select { |message|
+              # 過去の発言を拾わないように、起動時刻以降のメッセージのみを対象にする。
+              created_datetime = DateTime.parse(message["created_at"])
+              created_time = Time.local(created_datetime.year, created_datetime.month, created_datetime.day,
+                                        created_datetime.hour, created_datetime.min, created_datetime.sec)
+              (created_time - start_time) >= 0
+            }.each { |message|
+              message_body = message["body"]
+              screen_name = message["screen_name"]
+              name = message["name"]
+              id = message["id"]
+              @gateway.post_message(@name, screen_name, name, message_body, id)
+              since_id = id
+            }
+          rescue
+            p "exception"
+          end
+          sleep polling_interval
+        end
+      }
+    end
+
+    def post_message(message)
+      @client.post_message(@room_id, message)
+    end
+
+    def user_exists?(user)
+      @user_list.include?(user)
+    end
+
+    def user_add(user)
+      @user_list << user unless @user_list.include?(user)
+    end
+  end
+
+  def server_name
+    "as-irc-gateway"
+  end
+
+  def post_message(channel, screen_name, name, message, message_id)
+    # irc client からの発言が重複して再ポストされるのを防ぐため、
+    # message_id と @last_post_message_id が等しくないもののみ post する。
+    @last_post_message_id ||= []
+    if @last_post_message_id.include?(message_id) then
+      @last_post_message_id.delete(message_id)
+    else
+      connection = @connections[channel]
+      if not connection.user_exists?(name) then
+        post name, JOIN, "#" + channel
+        connection.user_add(name)
+      end
+      post name, PRIVMSG, "#" + channel, message
+    end
+  end
+
+  def on_privmsg(message)
+    super
+    channel = message.params[0]
+    channel = channel[1...channel.length] if channel.start_with?("#")
+    text = message.params[1]
+    connection = @connections[channel]
+    if not connection.nil? then
+      @last_post_message_id ||= []
+      message_id = connection.post_message(text)
+      @last_post_message_id << message_id
+    end
+  end
+
+  def on_join(message)
+    super
+    channel = message.params[0]
+    if channel.start_with?("#") then
+      channel = channel[1...channel.length]
+    end
+    if @client.channel_exists?(channel) then
+      post @name, JOIN, "#" + channel
+      @connections ||= {}
+      if not @connections.has_key?(channel) then
+        @connections[channel] = AsRoomConnection.new(@client, channel, self, @opts[:pollinginterval])
+      end
+      post nil, RPL_NAMREPLY, @prefix.nick, "=", channel, "@#{@prefix.nick}"
+      post nil, RPL_ENDOFNAMES, @prefix.nick, channel, "End of NAMES list"
+    else
+      post @name, ERR_NOSUCHCHANNEL, channel, "No such channel"
+    end
+  end
+
+  def on_user(message)
+    super
+    @name = message.params[0]
+    realname = message.params[3]
+    realname.split(",").map { |param|
+      param.split("=", 2)
+    }.select { |param|
+      param.length == 2
+    }.map { |param|
+      [param[0], param[1]]
+    }.each { |key, value|
+      case key
+      when "api_key"
+        @as_api_key = value
+      when "host"
+        @as_host = value
+      end
+    }
+    @client = AsClient.new(@as_host, @as_api_key)
+  end
+end
+
+if __FILE__ == $0
+  require "optparse"
+  opts = {
+    :port => 16668,
+    :host => "localhost",
+    :log => nil,
+    :debug => false,
+    :foreground => false,
+    :pollinginterval => 10,
+  }
+
+  OptionParser.new { |parser|
+    parser.instance_eval {
+      self.banner  = <<-EOB.gsub(/^\t+/, "")
+Usage: #{$0} [opts]
+EOB
+
+      separator ""
+
+      separator "Options:"
+      on("-p", "--port [PORT=#{opts[:port]}]", "port number to listen") { |port|
+        opts[:port] = port
+      }
+      on("-h", "--host [HOST=#{opts[:host]}]", "host name or IP address to listen") { |host|
+        opts[:host] = host
+      }
+      on("-l", "--log LOG", "log file") { |log|
+        opts[:log] = log
+      }
+      on("--debug", "Enable debug mode") { |debug|
+        opts[:log] = $stdout
+        opts[:debug] = true
+      }
+      on("-f", "--foreground", "run foreground") { |foreground|
+        opts[:log] = $stdout
+        opts[:foreground] = true
+      }
+      on("-i", "--pollinginterval", "polling interval") { |pollinginterval|
+        opts[:pollinginterval] = pollinginterval
+      }
+      parse!(ARGV)
+    }
+  }
+
+  opts[:logger] = Logger.new(opts[:log], "daily")
+  opts[:logger].level = opts[:debug] ? Logger::DEBUG : Logger::INFO
+  opts[:logger].level = Logger::INFO
+
+  Net::IRC::Server.new(opts[:host], opts[:port], AsIrcGateway, opts).start
+end
