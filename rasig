@@ -47,16 +47,28 @@ class AsIrcGateway < Net::IRC::Server::Session
       response = Net::HTTP.start(@uri.host, @uri.port) { |http|
         http.get(@uri.path + "/room/list.json?api_key=#{@api_key}")
       }
-      JSON.parse(response.body).select { |room|
+      result = JSON.parse(response.body)
+      result.select { |room|
         room["name"] == channel
-      }.each { |room|
-        return room["id"]
-      }
-      nil
+      }.map { |room|
+        room["id"]
+      }.first
     end
 
     def channel_exists?(channel)
       not get_room_id_by_name(channel).nil?
+    end
+
+    def get_room_name_by_id(room_id)
+      response = Net::HTTP.start(@uri.host, @uri.port) { |http|
+        http.get(@uri.path + "/room/list.json?api_key=#{@api_key}")
+      }
+      result = JSON.parse(response.body)
+      result.select { |room|
+        room["id"] == room_id
+      }.map { |room|
+        room["name"]
+      }.first
     end
   end
 
@@ -131,6 +143,28 @@ class AsIrcGateway < Net::IRC::Server::Session
     end
   end
 
+  def join_to(room_name_or_id)
+    room_name = room_name_or_id
+    room_name.force_encoding("utf-8")
+    if room_name.start_with?("#") then
+      room_name = room_name[1...room_name.length]
+    end
+    if not @client.channel_exists?(room_name) then
+      room_name = @client.get_room_name_by_id(room_name)
+    end
+    if @client.channel_exists?(room_name) then
+      post @name, JOIN, "#" + room_name
+      @connections ||= {}
+      if not @connections.has_key?(room_name) then
+        @connections[room_name] = AsRoomConnection.new(@client, room_name, self, @opts.pollinginterval)
+      end
+      post nil, RPL_NAMREPLY, @prefix.nick, "=", room_name, "@#{@prefix.nick}"
+      post nil, RPL_ENDOFNAMES, @prefix.nick, room_name, "End of NAMES list"
+    else
+      post @name, ERR_NOSUCHCHANNEL, room_name, "No such channel"
+    end
+  end
+
   def on_privmsg(message)
     super
     channel = message.params[0]
@@ -146,21 +180,9 @@ class AsIrcGateway < Net::IRC::Server::Session
 
   def on_join(message)
     super
-    channel = message.params[0]
-    if channel.start_with?("#") then
-      channel = channel[1...channel.length]
-    end
-    if @client.channel_exists?(channel) then
-      post @name, JOIN, "#" + channel
-      @connections ||= {}
-      if not @connections.has_key?(channel) then
-        @connections[channel] = AsRoomConnection.new(@client, channel, self, @opts[:pollinginterval])
-      end
-      post nil, RPL_NAMREPLY, @prefix.nick, "=", channel, "@#{@prefix.nick}"
-      post nil, RPL_ENDOFNAMES, @prefix.nick, channel, "End of NAMES list"
-    else
-      post @name, ERR_NOSUCHCHANNEL, channel, "No such channel"
-    end
+    message.params[0].split(",").each { |room_name_or_id|
+      join_to(room_name_or_id)
+    }
   end
 
   def on_user(message)
