@@ -127,6 +127,10 @@ class AsIrcGateway < Net::IRC::Server::Session
     end
   end
 
+  def initialize
+    @encoding = "utf-8"
+  end
+
   def server_name
     "as-irc-gateway"
   end
@@ -149,7 +153,7 @@ class AsIrcGateway < Net::IRC::Server::Session
 
   def join_to(room_name_or_id)
     room_name = room_name_or_id
-    room_name.force_encoding("utf-8")
+    room_name.force_encoding(@encoding)
     if room_name.start_with?("#") then
       room_name = room_name[1...room_name.length]
     end
@@ -166,7 +170,7 @@ class AsIrcGateway < Net::IRC::Server::Session
       post nil, RPL_NAMREPLY, @prefix.nick, "=", room_name, "@#{@prefix.nick}"
       post nil, RPL_ENDOFNAMES, @prefix.nick, room_name, "End of NAMES list"
     else
-      post @name, ERR_NOSUCHCHANNEL, room_name, "No such channel"
+      post @name, ERR_NOSUCHCHANNEL, room_name_or_id, "No such channel"
     end
   end
 
@@ -174,7 +178,9 @@ class AsIrcGateway < Net::IRC::Server::Session
     super
     channel = message.params[0]
     channel = channel[1...channel.length] if channel.start_with?("#")
+    channel.force_encoding(@encoding)
     text = message.params[1]
+    text.force_encoding(@encoding)
     connection = @connections[channel]
     if not connection.nil? then
       @last_post_message_id ||= []
@@ -185,15 +191,21 @@ class AsIrcGateway < Net::IRC::Server::Session
 
   def on_join(message)
     super
-    message.params[0].split(",").each { |room_name_or_id|
-      join_to(room_name_or_id)
+    channel_list = message.params[0]
+    channel_list.force_encoding(@encoding)
+    channel_list.split(",").each { |room_name_or_id|
+      if not room_name_or_id.nil? then
+        join_to(room_name_or_id)
+      end
     }
   end
 
   def on_user(message)
     super
     @name = message.params[0]
+    @name.force_encoding(@encoding)
     realname = message.params[3]
+    realname.force_encoding(@encoding)
     realname.split(",").map { |param|
       param.split("=", 2)
     }.select { |param|
