@@ -9,7 +9,7 @@ require 'date'
 class AsIrcGateway < Net::IRC::Server::Session
   class AsClient
     def initialize(api_entry, api_key)
-      @api_entry = api_entry
+      @api_entry = api_entry + "/api/v1"
       @api_key = api_key
       @uri = URI(@api_entry)
     end
