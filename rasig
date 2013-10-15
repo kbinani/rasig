@@ -49,7 +49,7 @@ class AsIrcGateway < Net::IRC::Server::Session
       }
       result = JSON.parse(response.body)
       result.select { |room|
-        room["name"] == channel
+        sanitize_room_name(room["name"]) == channel
       }.map { |room|
         room["id"]
       }.first
@@ -67,8 +67,12 @@ class AsIrcGateway < Net::IRC::Server::Session
       result.select { |room|
         room["id"] == room_id
       }.map { |room|
-        room["name"]
+        sanitize_room_name(room["name"])
       }.first
+    end
+
+    def sanitize_room_name(room_name)
+      room_name.gsub(/ /, "_")
     end
   end
 
@@ -153,6 +157,7 @@ class AsIrcGateway < Net::IRC::Server::Session
       room_name = @client.get_room_name_by_id(room_name)
     end
     if @client.channel_exists?(room_name) then
+      room_name = @client.sanitize_room_name(room_name)
       post @name, JOIN, "#" + room_name
       @connections ||= {}
       if not @connections.has_key?(room_name) then
