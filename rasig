@@ -127,8 +127,8 @@ class AsIrcGateway < Net::IRC::Server::Session
     end
   end
 
-  def initialize
-    @encoding = "utf-8"
+  def encoding
+    "utf-8"
   end
 
   def server_name
@@ -153,7 +153,7 @@ class AsIrcGateway < Net::IRC::Server::Session
 
   def join_to(room_name_or_id)
     room_name = room_name_or_id
-    room_name.force_encoding(@encoding)
+    room_name.force_encoding(encoding)
     if room_name.start_with?("#") then
       room_name = room_name[1...room_name.length]
     end
@@ -178,9 +178,9 @@ class AsIrcGateway < Net::IRC::Server::Session
     super
     channel = message.params[0]
     channel = channel[1...channel.length] if channel.start_with?("#")
-    channel.force_encoding(@encoding)
+    channel.force_encoding(encoding)
     text = message.params[1]
-    text.force_encoding(@encoding)
+    text.force_encoding(encoding)
     connection = @connections[channel]
     if not connection.nil? then
       @last_post_message_id ||= []
@@ -192,7 +192,7 @@ class AsIrcGateway < Net::IRC::Server::Session
   def on_join(message)
     super
     channel_list = message.params[0]
-    channel_list.force_encoding(@encoding)
+    channel_list.force_encoding(encoding)
     channel_list.split(",").each { |room_name_or_id|
       if not room_name_or_id.nil? then
         join_to(room_name_or_id)
@@ -203,9 +203,9 @@ class AsIrcGateway < Net::IRC::Server::Session
   def on_user(message)
     super
     @name = message.params[0]
-    @name.force_encoding(@encoding)
+    @name.force_encoding(encoding)
     realname = message.params[3]
-    realname.force_encoding(@encoding)
+    realname.force_encoding(encoding)
     realname.split(",").map { |param|
       param.split("=", 2)
     }.select { |param|
