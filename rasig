@@ -26,6 +26,17 @@ class AsIrcGateway < Net::IRC::Server::Session
       end
     end
 
+    def room_list
+      begin
+        response = Net::HTTP.start(@uri.host, @uri.port) { |http|
+          http.get(@uri.path + "/room/list.json?api_key=#{@api_key}")
+        }
+        return JSON.parse(response.body)
+      rescue
+        return []
+      end
+    end
+
     def post_message(room_id, message)
       response = Net::HTTP.start(@uri.host, @uri.port) { |http|
         http.post(@uri.path + "/message.json",
@@ -44,11 +55,7 @@ class AsIrcGateway < Net::IRC::Server::Session
     end
 
     def get_room_id_by_name(channel)
-      response = Net::HTTP.start(@uri.host, @uri.port) { |http|
-        http.get(@uri.path + "/room/list.json?api_key=#{@api_key}")
-      }
-      result = JSON.parse(response.body)
-      result.select { |room|
+      room_list.select { |room|
         sanitize_room_name(room["name"]) == channel
       }.map { |room|
         room["id"]
@@ -60,11 +67,7 @@ class AsIrcGateway < Net::IRC::Server::Session
     end
 
     def get_room_name_by_id(room_id)
-      response = Net::HTTP.start(@uri.host, @uri.port) { |http|
-        http.get(@uri.path + "/room/list.json?api_key=#{@api_key}")
-      }
-      result = JSON.parse(response.body)
-      result.select { |room|
+      room_list.select { |room|
         room["id"] == room_id
       }.map { |room|
         sanitize_room_name(room["name"])
@@ -171,6 +174,23 @@ class AsIrcGateway < Net::IRC::Server::Session
       post nil, RPL_ENDOFNAMES, @prefix.nick, room_name, "End of NAMES list"
     else
       post @name, ERR_NOSUCHCHANNEL, room_name_or_id, "No such channel"
+    end
+  end
+
+  def on_list(message)
+    post(nil, RPL_LISTSTART, @prefix.nick, "")
+    @client.room_list.each { |room|
+      room_name = @client.sanitize_room_name(room["name"])
+      room_name.force_encoding(encoding)
+      post(nil, RPL_LIST, @prefix.nick, room_name)
+    }
+    post(nil, RPL_LISTEND, @prefix.nick, "End of LIST list")
+  end
+
+  def on_message(message)
+    case message.command
+    when LIST
+      on_list(message)
     end
   end
 
