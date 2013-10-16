@@ -86,11 +86,12 @@ class AsIrcGateway < Net::IRC::Server::Session
       @room_id = @client.get_room_id_by_name(@name)
       @gateway = gateway
       @user_list = []
+      @part_requested = false
 
       @thread = Thread.new {
         since_id = nil
         start_time = Time.now
-        while true do
+        while not @part_requested do
           begin
             message_list = @client.message_list(@room_id, since_id)
             message_list.select { |message|
@@ -128,6 +129,11 @@ class AsIrcGateway < Net::IRC::Server::Session
     def user_add(user)
       @user_list << user unless @user_list.include?(user)
     end
+
+    def part
+      @part_requested = true
+      @thread.join
+    end
   end
 
   def encoding
@@ -154,15 +160,19 @@ class AsIrcGateway < Net::IRC::Server::Session
     end
   end
 
-  def join_to(room_name_or_id)
+  def get_room_name(room_name_or_id)
     room_name = room_name_or_id
-    room_name.force_encoding(encoding)
     if room_name.start_with?("#") then
       room_name = room_name[1...room_name.length]
     end
     if not @client.channel_exists?(room_name) then
       room_name = @client.get_room_name_by_id(room_name)
     end
+    room_name
+  end
+
+  def join_to(room_name_or_id)
+    room_name = get_room_name(room_name_or_id)
     if @client.channel_exists?(room_name) then
       room_name = @client.sanitize_room_name(room_name)
       post @name, JOIN, "#" + room_name
@@ -174,6 +184,16 @@ class AsIrcGateway < Net::IRC::Server::Session
       post nil, RPL_ENDOFNAMES, @prefix.nick, room_name, "End of NAMES list"
     else
       post @name, ERR_NOSUCHCHANNEL, room_name_or_id, "No such channel"
+    end
+  end
+
+  def part_from(room_name_or_id)
+    room_name = get_room_name(room_name_or_id)
+    if (not @connections.nil?) and @connections.has_key?(room_name) then
+      connection = @connections[room_name]
+      @connections.delete room_name
+      post @prefix, PART, "#" + room_name
+      connection.part
     end
   end
 
@@ -241,6 +261,15 @@ class AsIrcGateway < Net::IRC::Server::Session
       end
     }
     @client = AsClient.new(@as_host, @as_api_key)
+  end
+
+  def on_part(message)
+    super
+    channel_list = message.params[0]
+    channel_list.force_encoding(encoding)
+    channel_list.split(",").each { |room_name_or_id|
+      part_from(room_name_or_id)
+    }
   end
 end
 
