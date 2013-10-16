@@ -144,6 +144,10 @@ class AsIrcGateway < Net::IRC::Server::Session
     "as-irc-gateway"
   end
 
+  def server_version
+    "0.0.1"
+  end
+
   def post_message(channel, screen_name, name, message, message_id)
     # irc client からの発言が重複して再ポストされるのを防ぐため、
     # message_id と @last_post_message_id が等しくないもののみ post する。
