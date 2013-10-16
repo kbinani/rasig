@@ -5,14 +5,14 @@ is an AsakusaSatellite IRC gateway
 # Requirement
 
 * Ruby
-* Gems: net-irc
 
 # Usage
 
 ```
 git clone https://github.com/kbinani/rasig.git rasig
 cd rasig
-./rasig --host=localhost --port=16668 --pollinginterval=10 &
+bundle install
+bundle exec ruby rasig --host=localhost --port=16668 --pollinginterval=10 &
 ```
 
 # How to connect to the gateway
