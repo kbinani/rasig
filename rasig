@@ -335,7 +335,7 @@ EOB
         opts[:log] = $stdout
         opts[:foreground] = true
       }
-      on("-i", "--pollinginterval", "polling interval") { |pollinginterval|
+      on("--pollinginterval [INTERVAL=#{opts[:pollinginterval]}]", "polling interval in seconds") { |pollinginterval|
         opts[:pollinginterval] = pollinginterval
       }
       parse!(ARGV)
