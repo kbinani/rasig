@@ -271,6 +271,14 @@ class AsIrcGateway < Net::IRC::Server::Session
       part_from(room_name_or_id)
     }
   end
+
+  def on_disconnected
+    if not @connections.nil? then
+      @connections.each { |name, connection|
+        connection.part
+      }
+    end
+  end
 end
 
 if __FILE__ == $0
