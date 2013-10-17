@@ -348,7 +348,7 @@ class AsIrcGateway < Net::IRC::Server::Session
     }
     if @as_api_key.nil? or @as_host.nil? then
       post nil, PRIVMSG, @prefix.nick, "API key or API URL of AsakusaSatellite is not specified."
-      post nil, PRIVMSG, @prefix.nick, "Set you realname on your IRC client as follows:"
+      post nil, PRIVMSG, @prefix.nick, "Set your realname on your IRC client like this:"
       post nil, PRIVMSG, @prefix.nick, "  api_key=01234567890abcdefghijklm host=http://example.com:3000"
       @as_api_key = nil
       @as_host = nil
