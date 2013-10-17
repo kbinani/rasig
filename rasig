@@ -350,7 +350,15 @@ EOB
         opts[:foreground] = true
       }
       on("--pollinginterval [INTERVAL=#{opts[:pollinginterval]}]", "polling interval in seconds") { |pollinginterval|
-        opts[:pollinginterval] = pollinginterval
+        begin
+          opts[:pollinginterval] = Integer(pollinginterval)
+        rescue
+          puts "Error: argument of --pollinginterval option must be integer"
+        end
+        if opts[:pollinginterval] <= 0 then
+          puts "Error: argument of --pollinginterval option must be larger or equal to 0"
+          opts[:pollinginterval] = 10
+        end
       }
       parse!(ARGV)
     }
