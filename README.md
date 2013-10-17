@@ -6,12 +6,34 @@ is an AsakusaSatellite IRC gateway
 
 * Ruby
 
-# Usage
+# Install and Usage
+
+## Windows
 
 ```
 git clone https://github.com/kbinani/rasig.git rasig
 cd rasig
 bundle install
+```
+
+Then start directly:
+
+```
+bundle exec ruby rasig --port=16668 --pollinginterval=10 &
+```
+
+or start with daemon mode:
+
+```
+start util\launch_rasig.vbs
+```
+
+## Other
+
+```
+git clone https://github.com/kbinani/rasig.git ~/.rasig
+cd ~/.rasig
+bundle install --path .bundle
 bundle exec ruby rasig --port=16668 --pollinginterval=10 &
 ```
 
