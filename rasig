@@ -6,154 +6,14 @@ require 'net/http'
 require 'net/https'
 require 'json'
 require 'date'
+require_relative 'lib/as/client.rb'
+require_relative 'lib/as/room_connection.rb'
 
 class AsIrcGateway < Net::IRC::Server::Session
   class StaticSetting
     VERSION         = "0.0.2"
     RECENT_INFO_URL = "https://raw.github.com/kbinani/rasig/master/recent.json"
     NAME            = "rasig"
-  end
-
-  class AsClient
-    def initialize(root_url, api_key)
-      @root_url = root_url
-      @api_entry = @root_url + "/api/v1"
-      @api_key = api_key
-      @uri = URI(@api_entry)
-    end
-
-    def message_list(room_id, since_id)
-      begin
-        query = "room_id=#{room_id}&api_key=#{@api_key}" + (since_id.nil? ? "" : "&since_id=#{since_id}")
-        response = Net::HTTP.start(@uri.host, @uri.port) { |http|
-          http.get(@uri.path + "/message/list.json?" + query)
-        }
-        return JSON.parse(response.body)
-      rescue
-        return []
-      end
-    end
-
-    def room_list
-      begin
-        response = Net::HTTP.start(@uri.host, @uri.port) { |http|
-          http.get(@uri.path + "/room/list.json?api_key=#{@api_key}")
-        }
-        return JSON.parse(response.body)
-      rescue
-        return []
-      end
-    end
-
-    def post_message(room_id, message)
-      response = Net::HTTP.start(@uri.host, @uri.port) { |http|
-        http.post(@uri.path + "/message.json",
-                  "room_id=#{room_id}&message=#{message}&api_key=#{@api_key}")
-      }
-      result = JSON.parse(response.body)
-      result["message_id"]
-    end
-
-    def get_screen_name(name)
-      response = Net::HTTP.start(@uri.host, @uri.port) { |http|
-        http.get(@uri.path + "/user.json?api_key=#{@api_key}")
-      }
-      result = JSON.parse(response.body)
-      result["screen_name"]
-    end
-
-    def get_room_id_by_name(channel)
-      room_list.select { |room|
-        sanitize_room_name(room["name"]) == channel
-      }.map { |room|
-        room["id"]
-      }.first
-    end
-
-    def channel_exists?(channel)
-      not get_room_id_by_name(channel).nil?
-    end
-
-    def get_room_name_by_id(room_id)
-      room_list.select { |room|
-        room["id"] == room_id
-      }.map { |room|
-        sanitize_room_name(room["name"])
-      }.first
-    end
-
-    def sanitize_room_name(room_name)
-      room_name.gsub(/ /, "_")
-    end
-
-    def root_url
-      @root_url
-    end
-  end
-
-  class AsRoomConnection
-    def initialize(as_client, name, gateway, polling_interval)
-      @client = as_client
-      @name = name
-      @room_id = @client.get_room_id_by_name(@name)
-      @gateway = gateway
-      @user_list = []
-      @part_requested = false
-
-      @thread = Thread.new {
-        since_id = nil
-        start_time = Time.now
-        while not @part_requested do
-          begin
-            message_list = @client.message_list(@room_id, since_id)
-            message_list.select { |message|
-              message["id"] != since_id
-            }.each.select { |message|
-              # 過去の発言を拾わないように、起動時刻以降のメッセージのみを対象にする。
-              created_datetime = DateTime.parse(message["created_at"])
-              created_time = Time.local(created_datetime.year, created_datetime.month, created_datetime.day,
-                                        created_datetime.hour, created_datetime.min, created_datetime.sec)
-              (created_time - start_time) >= 0
-            }.each { |message|
-              screen_name = message["screen_name"]
-              name = message["name"]
-              id = message["id"]
-              message_body = message["body"]
-              message_body = "" if message_body.nil?
-
-              message["attachment"].each { |file|
-                disk_filename = file["disk_filename"]
-                url = @client.root_url + "/upload/" + URI.encode(disk_filename)
-                message_body = message_body + "\n" + url
-              }
-
-              @gateway.post_message(@name, screen_name, name, message_body, id)
-              since_id = id
-            }
-          rescue
-            p "exception"
-          end
-          sleep polling_interval
-        end
-      }
-    end
-
-    def post_message(message)
-      @client.post_message(@room_id, message)
-    end
-
-    def user_exists?(user)
-      @user_list.include?(user)
-    end
-
-    def user_add(user)
-      @user_list << user unless @user_list.include?(user)
-    end
-
-    def part
-      @part_requested = true
-      @thread.join
-    end
   end
 
   class Version
@@ -233,7 +93,7 @@ class AsIrcGateway < Net::IRC::Server::Session
       post @name, JOIN, "#" + room_name
       @connections ||= {}
       if not @connections.has_key?(room_name) then
-        @connections[room_name] = AsRoomConnection.new(@client, room_name, self, @opts.pollinginterval)
+        @connections[room_name] = As::RoomConnection.new(@client, room_name, self, @opts.pollinginterval)
       end
       post nil, RPL_NAMREPLY, @prefix.nick, "=", room_name, "@#{@prefix.nick}"
       post nil, RPL_ENDOFNAMES, @prefix.nick, room_name, "End of NAMES list"
@@ -353,7 +213,7 @@ class AsIrcGateway < Net::IRC::Server::Session
       @as_api_key = nil
       @as_host = nil
     else
-      @client = AsClient.new(@as_host, @as_api_key)
+      @client = As::Client.new(@as_host, @as_api_key)
       check_for_updates
     end
   end
