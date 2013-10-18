@@ -31,9 +31,10 @@ module As
     end
 
     def post_message(room_id, message)
+      encoded_message = CGI.escape(message)
       response = Net::HTTP.start(@uri.host, @uri.port) { |http|
         http.post(@uri.path + "/message.json",
-                  "room_id=#{room_id}&message=#{message}&api_key=#{@api_key}")
+                  "room_id=#{room_id}&message=#{encoded_message}&api_key=#{@api_key}")
       }
       result = JSON.parse(response.body)
       result["message_id"]
