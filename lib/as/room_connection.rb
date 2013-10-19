@@ -1,13 +1,18 @@
+#!/usr/bin/env ruby
+# coding: utf-8
+
 module As
   class RoomConnection
-    def initialize(as_client, name, gateway, polling_interval)
+    def initialize(as_client, name, polling_interval)
       @client = as_client
       @name = name
+      @polling_interval = polling_interval
       @room_id = @client.get_room_id_by_name(@name)
-      @gateway = gateway
       @user_list = []
       @part_requested = false
+    end
 
+    def observe(&block)
       @thread = Thread.new {
         since_id = nil
         start_time = Time.now
@@ -23,25 +28,13 @@ module As
                                         created_datetime.hour, created_datetime.min, created_datetime.sec)
               (created_time - start_time) >= 0
             }.each { |message|
-              screen_name = message["screen_name"]
-              name = message["name"]
-              id = message["id"]
-              message_body = message["body"]
-              message_body = "" if message_body.nil?
-
-              message["attachment"].each { |file|
-                disk_filename = file["disk_filename"]
-                url = @client.root_url + "/upload/" + URI.encode(disk_filename)
-                message_body = message_body + "\n" + url
-              }
-
-              @gateway.post_message(@name, screen_name, name, message_body, id)
-              since_id = id
+              block.call(message) if block_given?
+              since_id = message["id"]
             }
-          rescue
-            p "exception"
+          rescue => e
+            p e
           end
-          sleep polling_interval
+          sleep @polling_interval
         end
       }
     end

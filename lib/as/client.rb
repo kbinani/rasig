@@ -1,3 +1,12 @@
+#!/usr/bin/env ruby
+# coding: utf-8
+
+require 'uri'
+require 'net/http'
+require 'net/https'
+require 'json'
+require 'cgi'
+
 module As
   class Client
     def initialize(root_url, api_key)

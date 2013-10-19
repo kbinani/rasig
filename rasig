@@ -93,7 +93,20 @@ class AsIrcGateway < Net::IRC::Server::Session
       post @name, JOIN, "#" + room_name
       @connections ||= {}
       if not @connections.has_key?(room_name) then
-        @connections[room_name] = As::RoomConnection.new(@client, room_name, self, @opts.pollinginterval)
+        @connections[room_name] = As::RoomConnection.new(@client, room_name, @opts.pollinginterval)
+        @connections[room_name].observe{ |message|
+          screen_name = message["screen_name"]
+          name = message["name"]
+          id = message["id"]
+          message_body = message["body"]
+          message_body = "" if message_body.nil?
+          message["attachment"].each { |file|
+            disk_filename = file["disk_filename"]
+            url = @client.root_url + "/upload/" + URI.encode(disk_filename)
+            message_body = message_body + "\n" + url
+          }
+          post_message(room_name, screen_name, name, message_body, id)
+        }
       end
       post nil, RPL_NAMREPLY, @prefix.nick, "=", room_name, "@#{@prefix.nick}"
       post nil, RPL_ENDOFNAMES, @prefix.nick, room_name, "End of NAMES list"
