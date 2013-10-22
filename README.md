@@ -6,7 +6,28 @@ is an AsakusaSatellite IRC gateway
 
 * Ruby
 
-# Install and Usage
+# How to install and run
+
+## Mac
+
+```
+git clone https://github.com/kbinani/rasig.git ~/.rasig
+cd ~/.rasig
+bundle install --path .bundle
+```
+
+Then start directly:
+
+```
+bundle exec ruby rasig --port=16668 --pollinginterval=10 &
+```
+
+or start with daemon mode:
+
+```
+sed -e s:\${HOME}:$HOME:g -i "" util/com.github.kbinani.rasig.plist 
+launchctl load -w util/com.github.kbinani.rasig.plist
+```
 
 ## Windows
 
