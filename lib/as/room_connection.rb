@@ -41,6 +41,10 @@ module As
       }
     end
 
+    def join
+      @thread.join
+    end
+
     def post_message(message)
       @client.post_message(@room_id, message)
     end
