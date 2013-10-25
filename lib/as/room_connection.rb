@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
 # coding: utf-8
 
+require 'date'
+
 module As
   class RoomConnection
     def initialize(as_client, name, polling_interval)
