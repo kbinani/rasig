@@ -61,5 +61,9 @@ module As
       @part_requested = true
       @thread.join
     end
+
+    def client
+      @client
+    end
   end
 end
