@@ -49,6 +49,15 @@ module As
       result["message_id"]
     end
 
+    def update_message(message_id, message)
+      encoded_message = CGI.escape(message)
+      Net::HTTP.start(@uri.host, @uri.port) { |http|
+        http.put(@uri.path + "/message/#{message_id}.json",
+                 "message=#{encoded_message}&api_key=#{@api_key}")
+      }
+      nil
+    end
+
     def get_screen_name(name)
       response = Net::HTTP.start(@uri.host, @uri.port) { |http|
         http.get(@uri.path + "/user.json?api_key=#{@api_key}")
